@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IG Grid Widget — Notion Embed</title>
+  <style>
+    :root{
+      --bg:#ffffff;           /* cor de fundo */
+      --gap:8px;              /* espaçamento entre cards */
+      --cols:3;               /* colunas desktop */
+      --radius:14px;          /* bordas arredondadas */
+      --hover-scale:1.02;     /* zoom no hover */
+      --shadow:0 6px 22px rgba(0,0,0,.08); /* sombra dos cards */
+      --maxwidth:1200px;      /* largura máxima do widget */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:#111; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji;
+      display:flex; align-items:center; justify-content:center; padding:14px;
+    }
+    .wrap{width:100%; max-width:var(--maxwidth)}
+    .title{font-weight:700; font-size:1.1rem; margin:0 0 10px 6px}
+    .grid{
+      display:grid; gap:var(--gap);
+      grid-template-columns:repeat(var(--cols), minmax(0, 1fr));
+    }
+    /* Responsivo */
+    @media (max-width: 980px){ :root{ --cols: 3 } }
+    @media (max-width: 740px){ :root{ --cols: 2 } }
+    @media (max-width: 460px){ :root{ --cols: 1 } }
+
+    .card{ position:relative; overflow:hidden; border-radius:var(--radius); box-shadow:var(--shadow); background:#fff }
+    .card a{ display:block; text-decoration:none; color:inherit }
+    .card img{ width:100%; height:100%; object-fit:cover; display:block; transition:transform .28s ease }
+    .card:hover img{ transform:scale(var(--hover-scale)) }
+
+    .badge{
+      position:absolute; top:8px; left:8px; background:rgba(17,17,17,.74); color:#fff; font-size:.72rem; padding:4px 8px; border-radius:999px;
+      backdrop-filter: blur(6px);
+    }
+    .caption{ padding:10px 12px 12px; font-size:.9rem }
+
+    .footer{ text-align:center; margin-top:12px; font-size:.85rem; opacity:.7 }
+    .footer a{ color:inherit }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title" id="title" hidden></h1>
+    <div class="grid" id="grid" aria-live="polite"></div>
+    <div class="footer" id="footer" hidden></div>
+  </div>
+
+  <script>
+    // ====== CONFIG PELAS QUERYSTRINGS ======
+    // Exemplos: ?title=Meu%20Feed&cols=4&gap=10&radius=18&bg=%23f7f7f7&shadow=1&hover=1.03
+    //           ?src=https://meujson.com/feed.json  (JSON com uma array de itens)
+
+    const params = new URLSearchParams(location.search);
+
+    const setVar = (name, val) => document.documentElement.style.setProperty(name, val);
+
+    if(params.get('bg'))      setVar('--bg', params.get('bg'));
+    if(params.get('gap'))     setVar('--gap', params.get('gap')+'px');
+    if(params.get('cols'))    setVar('--cols', Math.max(1, Math.min(8, +params.get('cols'))));
+    if(params.get('radius'))  setVar('--radius', params.get('radius')+'px');
+    if(params.get('hover'))   setVar('--hover-scale', params.get('hover'));
+    if(params.get('maxw'))    setVar('--maxwidth', params.get('maxw')+'px');
+    if(params.get('shadow')==='0') document.documentElement.style.setProperty('--shadow', 'none');
+
+    const titleEl = document.getElementById('title');
+    const footerEl = document.getElementById('footer');
+    const gridEl = document.getElementById('grid');
+
+    const title = params.get('title');
+    if(title){ titleEl.textContent = title; titleEl.hidden = false; }
+
+    const footer = params.get('footer');
+    if(footer){ footerEl.innerHTML = footer; footerEl.hidden = false; }
+
+    // ====== FONTE DE DADOS ======
+    // Estrutura esperada de cada item: { "url": "https://.../imagem.jpg", "link": "https://...", "alt": "texto opcional", "badge":"opcional", "caption":"opcional" }
+
+    const fallbackData = [
+      {url:"https://picsum.photos/id/1062/1200/1200", link:"https://example.com/1", alt:"Foto 1"},
+      {url:"https://picsum.photos/id/1025/1200/1200", link:"https://example.com/2", alt:"Foto 2"},
+      {url:"https://picsum.photos/id/1053/1200/1200", link:"https://example.com/3", alt:"Foto 3"},
+      {url:"https://picsum.photos/id/1011/1200/1200", link:"https://example.com/4", alt:"Foto 4"},
+      {url:"https://picsum.photos/id/1003/1200/1200", link:"https://example.com/5", alt:"Foto 5"},
+      {url:"https://picsum.photos/id/1043/1200/1200", link:"https://example.com/6", alt:"Foto 6"},
+      {url:"https://picsum.photos/id/1035/1200/1200", link:"https://example.com/7", alt:"Foto 7"},
+      {url:"https://picsum.photos/id/1024/1200/1200", link:"https://example.com/8", alt:"Foto 8"},
+      {url:"https://picsum.photos/id/1015/1200/1200", link:"https://example.com/9", alt:"Foto 9"}
+    ];
+
+    async function getData(){
+      const src = params.get('src');
+      if(!src){ return fallbackData }
+      try{
+        const res = await fetch(src, {cache:'no-store'});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        if(Array.isArray(data)) return data;
+        if(Array.isArray(data.items)) return data.items;
+        return fallbackData;
+      }catch(err){
+        console.warn('Falha ao carregar src, usando fallback:', err);
+        return fallbackData;
+      }
+    }
+
+    function render(items){
+      gridEl.innerHTML = '';
+      items.forEach((it, i)=>{
+        const a = document.createElement('a');
+        a.href = it.link || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'card';
+        a.setAttribute('aria-label', it.alt || ('Post '+(i+1)));
+
+        const img = document.createElement('img');
+        img.src = it.url;
+        img.alt = it.alt || '';
+        a.appendChild(img);
+
+        if(it.badge){
+          const b = document.createElement('div');
+          b.className = 'badge';
+          b.textContent = it.badge;
+          a.appendChild(b);
+        }
+
+        const figure = document.createElement('div');
+        figure.appendChild(a);
+
+        if(it.caption){
+          const cap = document.createElement('div');
+          cap.className = 'caption';
+          cap.textContent = it.caption;
+          figure.appendChild(cap);
+        }
+
+        gridEl.appendChild(figure);
+      });
+    }
+
+    getData().then(render);
+  </script>
+</body>
+</html>
